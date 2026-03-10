@@ -7,6 +7,7 @@ const UserSchema = new mongoose.Schema({
   email: String,
   password: String,
   isAdmin: Boolean,
+  isActive: { type: Boolean, default: true },
 }, 
 { timestamps: true });
 

@@ -635,8 +635,25 @@ const Sales = () => {
                           >
                             <td className="py-3 px-4 whitespace-nowrap">
                               <div className="flex items-center gap-2 text-gray-600 text-sm">
-                                <Calendar size={14} className="text-gray-400" />
-                                {new Date(sale.createdAt).toLocaleDateString()}
+                                <Calendar
+                                  size={14}
+                                  className="text-gray-400 shrink-0"
+                                />
+                                <div className="flex flex-col">
+                                  <span>
+                                    {new Date(
+                                      sale.createdAt,
+                                    ).toLocaleDateString()}
+                                  </span>
+                                  <span className="text-[11px] text-gray-400 mt-0.5">
+                                    {new Date(
+                                      sale.createdAt,
+                                    ).toLocaleTimeString([], {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })}
+                                  </span>
+                                </div>
                               </div>
                             </td>
                             <td className="py-3 px-4 text-sm font-medium text-gray-800">

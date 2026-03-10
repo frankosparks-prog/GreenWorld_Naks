@@ -153,6 +153,10 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
+    if (user.isActive === false) {
+      return res.status(403).json({ message: 'Account deactivated. Please contact admin.' });
+    }
+
     const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '1d' });
 
     res.status(200).json({
@@ -201,7 +205,7 @@ router.get('/users', async (req, res) => {
 // ✏️ Update user
 router.put('/users/:id', async (req, res) => {
   try {
-    const { username, email, isAdmin, password } = req.body;
+    const { username, email, isAdmin, password, isActive } = req.body;
 
     // 1. Find user first to manipulate the document directly
     const user = await User.findById(req.params.id);
@@ -216,6 +220,10 @@ router.put('/users/:id', async (req, res) => {
     // Explicitly check boolean, as 'false' is falsy
     if (typeof isAdmin !== 'undefined') {
         user.isAdmin = isAdmin;
+    }
+    
+    if (typeof isActive !== 'undefined') {
+        user.isActive = isActive;
     }
 
     // 3. Update password ONLY if provided and not empty

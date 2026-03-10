@@ -7,10 +7,10 @@ import Footer from './components/Footer';
 import ScrollToTop from './components/ScrollTop';
 import { Toaster } from 'react-hot-toast';
 // import Signup from './components/SignUp';
-// Admin components
 import UsersDetails from "./Admin/UserDetails";
 import AdminDashboard from "./Admin/AdminDashboard";
 import ProtectedRoute from "./Admin/ProtectedRoute";
+import Analytics from "./Admin/Analytics";
 // User components
 import NotFound from './pages/NotFound';
 import Sales from './pages/Sales';
@@ -91,6 +91,7 @@ const App = () => {
           <Route path="sales" element={<ManageSales />} />
           <Route path="stock" element={<ManageStock />} />
           <Route path="dist" element={<ManageDistributors />} />
+          <Route path="analytics" element={<Analytics />} />
           {/* <Route path="massage" element={<ManageMassage />} /> */}
         </Route>
 

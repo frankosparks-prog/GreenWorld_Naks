@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   ChevronRight,
   Users,
+  TrendingUp,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -37,10 +38,15 @@ const links = [
     icon: <User size={20} />,
   },
   {
-    to: "/admin/dashboard/massage",
-    label: "Wellness Services",
-    icon: <Users size={20} />,
+    to: "/admin/dashboard/analytics",
+    label: "Analytics",
+    icon: <TrendingUp size={20} />,
   },
+  // {
+  //   to: "/admin/dashboard/massage",
+  //   label: "Wellness Services",
+  //   icon: <Users size={20} />,
+  // },
 ];
 
 const AdminDashboard = () => {
@@ -207,7 +213,7 @@ const AdminDashboard = () => {
 
           {/* Right Actions */}
           <div className="flex items-center gap-4">
-            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-green-50 text-green-700 rounded-full border border-green-100 text-xs font-medium">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 text-green-700 rounded-full border border-green-100 text-xs font-medium">
               <span className="w-2 h-2 rounded-full bg-green-500"></span>
               System Healthy
             </div>

@@ -15,6 +15,10 @@ function Profile() {
   const [agent, setAgent] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Password change state
+  const [passwords, setPasswords] = useState({ new: "", confirm: "" });
+  const [updatingPassword, setUpdatingPassword] = useState(false);
+
   // ✅ Fetch logged-in agent’s info
   useEffect(() => {
     const fetchAgent = async () => {
@@ -45,6 +49,46 @@ function Profile() {
 
     fetchAgent();
   }, []);
+
+  // 🔑 Handle Password Change
+  const handlePasswordChange = async (e) => {
+    e.preventDefault();
+    if (passwords.new !== passwords.confirm) {
+      return toast.error("Passwords do not match");
+    }
+    if (passwords.new.length < 6) {
+      return toast.error("Password must be at least 6 characters");
+    }
+
+    try {
+      setUpdatingPassword(true);
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${SERVER_URL}/api/auth/users/${agent._id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ password: passwords.new }),
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        toast.success("Password updated successfully! Please login again.");
+        setPasswords({ new: "", confirm: "" });
+        setTimeout(() => {
+          localStorage.clear();
+          window.location.href = "/";
+        }, 2000);
+      } else {
+        toast.error(data.message || "Failed to update password");
+      }
+    } catch {
+      toast.error("Error updating password");
+    } finally {
+      setUpdatingPassword(false);
+    }
+  };
 
   // 🧮 Format Date Safely
   const formatDate = (dateString) => {
@@ -197,6 +241,65 @@ function Profile() {
                   </div>
                 </div>
               </div>
+            </div>
+            {/* Password Change Form */}
+            <div className="mt-8 border-t border-gray-100 pt-6">
+              <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider pb-4">
+                Security Settings
+              </h3>
+              <form
+                onSubmit={handlePasswordChange}
+                className="p-5 rounded-2xl bg-gray-50/50 border border-gray-100 space-y-4 max-w-2xl"
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                      New Password
+                    </label>
+                    <input
+                      type="password"
+                      value={passwords.new}
+                      onChange={(e) =>
+                        setPasswords({ ...passwords, new: e.target.value })
+                      }
+                      className="w-full border border-gray-200 px-4 py-3 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all placeholder:text-gray-300"
+                      placeholder="Enter new password"
+                      minLength={6}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                      Confirm Password
+                    </label>
+                    <input
+                      type="password"
+                      value={passwords.confirm}
+                      onChange={(e) =>
+                        setPasswords({ ...passwords, confirm: e.target.value })
+                      }
+                      className="w-full border border-gray-200 px-4 py-3 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all placeholder:text-gray-300"
+                      placeholder="Confirm new password"
+                      minLength={6}
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="submit"
+                    disabled={
+                      updatingPassword || !passwords.new || !passwords.confirm
+                    }
+                    className="bg-gray-900 hover:bg-black text-white px-6 py-2.5 rounded-xl text-sm font-medium transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {updatingPassword ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <Shield size={16} />
+                    )}
+                    Update Password
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
 

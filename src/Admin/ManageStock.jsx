@@ -1,14 +1,14 @@
 // import React, { useEffect, useState } from "react";
-// import { 
-//   Package, 
-//   Trash2, 
-//   Edit3, 
-//   Loader2, 
-//   Search, 
-//   Filter, 
-//   X, 
-//   Save, 
-//   ChevronLeft, 
+// import {
+//   Package,
+//   Trash2,
+//   Edit3,
+//   Loader2,
+//   Search,
+//   Filter,
+//   X,
+//   Save,
+//   ChevronLeft,
 //   ChevronRight,
 //   AlertTriangle,
 //   CheckCircle2,
@@ -112,13 +112,13 @@
 
 //   return (
 //     <div className="min-h-screen bg-gray-50/50 pb-12">
-      
+
 //       {/* Header */}
 //       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
 //         <div>
 //             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
 //             <div className="p-2 bg-green-100 rounded-lg">
-//                 <Package size={24} className="text-green-700" /> 
+//                 <Package size={24} className="text-green-700" />
 //             </div>
 //             Admin Stock Management
 //             </h1>
@@ -205,7 +205,7 @@
 //                       </td>
 
 //                       <td className="py-4 px-6 text-sm text-gray-600 font-medium">{item.bv}</td>
-                      
+
 //                       <td className="py-4 px-6">
 //                         <div className="text-sm text-gray-700">
 //                              {item.addedBy
@@ -213,14 +213,14 @@
 //                                 : <span className="text-gray-400 italic">System</span>}
 //                         </div>
 //                       </td>
-                      
+
 //                       <td className="py-4 px-6">
 //                         <div className="flex items-center gap-2 text-sm text-gray-500">
 //                             <Calendar size={14} className="text-gray-400" />
 //                             {new Date(item.createdAt).toLocaleDateString()}
 //                         </div>
 //                       </td>
-                      
+
 //                       <td className="py-4 px-6 text-right">
 //                         <div className="flex items-center justify-end gap-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
 //                           <button
@@ -300,7 +300,7 @@
 //                         placeholder="Product name"
 //                     />
 //                 </div>
-                
+
 //                 <div className="grid grid-cols-2 gap-4">
 //                     <div>
 //                         <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Quantity</label>
@@ -349,7 +349,6 @@
 // };
 
 // export default ManageStock;
-
 
 import React, { useEffect, useState } from "react";
 import {
@@ -403,7 +402,7 @@ const ManageStock = () => {
   // 🔍 Search Filter
   useEffect(() => {
     const filtered = stock.filter((item) =>
-      item.name.toLowerCase().includes(searchTerm.toLowerCase())
+      item.name.toLowerCase().includes(searchTerm.toLowerCase()),
     );
     setFilteredStock(filtered);
     setPage(1);
@@ -443,7 +442,7 @@ const ManageStock = () => {
     try {
       const res = await axios.put(
         `${SERVER_URL}/api/stock/${editItem._id}`,
-        editItem
+        editItem,
       );
       setStock(stock.map((s) => (s._id === editItem._id ? res.data : s)));
       setEditItem(null);
@@ -470,7 +469,7 @@ const ManageStock = () => {
   const totalPages = Math.ceil(filteredStock.length / ITEMS_PER_PAGE);
   const currentPageItems = filteredStock.slice(
     (page - 1) * ITEMS_PER_PAGE,
-    page * ITEMS_PER_PAGE
+    page * ITEMS_PER_PAGE,
   );
 
   return (
@@ -487,6 +486,22 @@ const ManageStock = () => {
           <p className="text-sm text-gray-500 mt-1 ml-1">
             Monitor inventory levels and update product details.
           </p>
+        </div>
+      </div>
+
+      <div className="inline-flex items-center bg-white px-5 py-3 rounded-xl border border-gray-200 shadow-sm mb-6 -mt-2">
+        <div className="p-2 bg-green-50 rounded-lg mr-4">
+          <Package size={22} className="text-green-600" />
+        </div>
+        <div>
+          <span className="text-xs text-gray-500 font-bold uppercase tracking-wider block mb-1">
+            Total Stock Items
+          </span>
+          <span className="text-xl font-extrabold text-gray-900 leading-none">
+            {filteredStock
+              .reduce((acc, item) => acc + (Number(item.quantity) || 0), 0)
+              .toLocaleString()}
+          </span>
         </div>
       </div>
 
@@ -508,7 +523,9 @@ const ManageStock = () => {
 
         <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-sm w-full md:w-auto">
           <Filter className="text-gray-400 shrink-0" size={16} />
-          <span className="text-sm text-gray-500 font-medium whitespace-nowrap">Sort:</span>
+          <span className="text-sm text-gray-500 font-medium whitespace-nowrap">
+            Sort:
+          </span>
           <select
             value={filterOption}
             onChange={(e) => setFilterOption(e.target.value)}
@@ -534,9 +551,7 @@ const ManageStock = () => {
         ) : currentPageItems.length === 0 ? (
           <div className="text-center py-16">
             <Package size={48} className="mx-auto text-gray-200 mb-3" />
-            <p className="text-gray-500 font-medium">
-              No stock records found.
-            </p>
+            <p className="text-gray-500 font-medium">No stock records found.</p>
             <p className="text-sm text-gray-400">
               Try adjusting your search filters.
             </p>
@@ -564,8 +579,8 @@ const ManageStock = () => {
                       item.quantity <= 10
                         ? "bg-red-50 text-red-700 border-red-100"
                         : item.quantity < 20
-                        ? "bg-orange-50 text-orange-700 border-orange-100"
-                        : "bg-green-50 text-green-700 border-green-100"
+                          ? "bg-orange-50 text-orange-700 border-orange-100"
+                          : "bg-green-50 text-green-700 border-green-100"
                     }`}
                   >
                     {item.quantity <= 10 ? (
@@ -585,7 +600,9 @@ const ManageStock = () => {
                   <div className="flex items-center gap-1.5">
                     <User size={12} />
                     <span className="truncate max-w-[80px]">
-                      {item.addedBy ? item.addedBy.username || "Admin" : "System"}
+                      {item.addedBy
+                        ? item.addedBy.username || "Admin"
+                        : "System"}
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5">
@@ -658,8 +675,8 @@ const ManageStock = () => {
                           item.quantity <= 10
                             ? "bg-red-50 text-red-700 border-red-100"
                             : item.quantity < 20
-                            ? "bg-orange-50 text-orange-700 border-orange-100"
-                            : "bg-green-50 text-green-700 border-green-100"
+                              ? "bg-orange-50 text-orange-700 border-orange-100"
+                              : "bg-green-50 text-green-700 border-green-100"
                         }`}
                       >
                         {item.quantity <= 10 ? (
@@ -721,11 +738,16 @@ const ManageStock = () => {
         {totalPages > 1 && (
           <div className="border-t border-gray-100 bg-gray-50/50 px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
             <p className="text-sm text-gray-500 text-center sm:text-left">
-              Showing <span className="font-medium">{(page - 1) * ITEMS_PER_PAGE + 1}</span> to{" "}
+              Showing{" "}
+              <span className="font-medium">
+                {(page - 1) * ITEMS_PER_PAGE + 1}
+              </span>{" "}
+              to{" "}
               <span className="font-medium">
                 {Math.min(page * ITEMS_PER_PAGE, filteredStock.length)}
               </span>{" "}
-              of <span className="font-medium">{filteredStock.length}</span> items
+              of <span className="font-medium">{filteredStock.length}</span>{" "}
+              items
             </p>
             <div className="flex gap-2">
               <button

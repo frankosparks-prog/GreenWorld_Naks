@@ -14,6 +14,7 @@ const stockRoutes = require("./routes/StockRoutes.js");
 const salesRoutes = require("./routes/SalesRoutes.js");
 const distributorRoutes = require("./routes/DistributorRoutes.js");
 const massageRoutes = require("./routes/MassageRoute.js");
+const analyticsRoutes = require("./routes/AnalyticsRoutes.js");
 const errorHandler = require("./middleware/Errorhandler.js");
 
 dotenv.config();
@@ -72,6 +73,7 @@ app.use("/api/stock", stockRoutes);
 app.use("/api/sales", salesRoutes);
 app.use("/api/distributors", distributorRoutes);
 app.use("/api/massage", massageRoutes);
+app.use("/api/analytics", analyticsRoutes);
 
 // Error Handling Middleware
 app.use(errorHandler);
