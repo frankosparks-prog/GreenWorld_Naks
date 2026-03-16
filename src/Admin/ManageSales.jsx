@@ -12,6 +12,10 @@ import {
   User,
   Package,
   Clock,
+  Wallet,
+  RotateCcw,
+  X,
+  Loader2
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { saveAs } from "file-saver";
@@ -32,6 +36,28 @@ function ManageSales() {
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
+
+  // Debt & Return State
+  const [showDebtModal, setShowDebtModal] = useState(false);
+  const [selectedDistributor, setSelectedDistributor] = useState("");
+  const [unpaidSales, setUnpaidSales] = useState([]);
+  const [payAmounts, setPayAmounts] = useState({});
+  const [returnAmounts, setReturnAmounts] = useState({});
+  const [expandedHistory, setExpandedHistory] = useState({});
+  const [showReturnModal, setShowReturnModal] = useState(false);
+  const [returnDetails, setReturnDetails] = useState({ saleId: null, product: "", maxQty: 0, returnQty: "" });
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (selectedDistributor) {
+      fetch(`${SERVER_URL}/api/sales/distributor/${selectedDistributor}/debt`)
+        .then(res => res.json())
+        .then(data => setUnpaidSales(data))
+        .catch(err => toast.error("Failed to fetch unpaid sales"));
+    } else {
+      setUnpaidSales([]);
+    }
+  }, [selectedDistributor]);
 
   // ✅ Fetch all sales
   const fetchSales = async () => {
@@ -114,6 +140,94 @@ function ManageSales() {
     [filteredSales],
   );
 
+  // ✅ Handle Specific Debt Payment
+  const handlePaySpecificDebt = async (saleId) => {
+    const amount = payAmounts[saleId];
+    if (!amount || amount <= 0) return toast.error("Enter valid amount");
+    try {
+      setLoading(true);
+      const res = await fetch(`${SERVER_URL}/api/sales/pay-debt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ saleId, amount })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success("Payment recorded!");
+        fetchSales();
+        setPayAmounts(prev => ({...prev, [saleId]: ""}));
+        // Refresh unpaid sales
+        fetch(`${SERVER_URL}/api/sales/distributor/${selectedDistributor}/debt`)
+          .then(res => res.json())
+          .then(data => setUnpaidSales(data));
+      } else {
+        toast.error(data.error || "Failed to settle debt");
+      }
+    } catch (err) {
+      toast.error("Server error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ✅ Handle Specific Return inside Modal
+  const handleReturnSpecificProduct = async (saleId, maxQty) => {
+    const returnQty = returnAmounts[saleId];
+    if (!returnQty || returnQty <= 0) return toast.error("Enter valid return quantity");
+    if (returnQty > maxQty) return toast.error("Exceeds max returnable quantity");
+    try {
+      setLoading(true);
+      const res = await fetch(`${SERVER_URL}/api/sales/return`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ saleId, returnQuantity: returnQty })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success("Return processed successfully!");
+        fetchSales();
+        setReturnAmounts(prev => ({...prev, [saleId]: ""}));
+        fetch(`${SERVER_URL}/api/sales/distributor/${selectedDistributor}/debt`)
+          .then(res => res.json())
+          .then(data => setUnpaidSales(data));
+      } else {
+        toast.error(data.error || "Failed to process return");
+      }
+    } catch (err) {
+      toast.error("Server error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ✅ Handle Return Product
+  const handleReturnProduct = async () => {
+    if (!returnDetails.saleId || !returnDetails.returnQty) return toast.error("Enter return quantity");
+    try {
+      setLoading(true);
+      const res = await fetch(`${SERVER_URL}/api/sales/return`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          saleId: returnDetails.saleId,
+          returnQuantity: returnDetails.returnQty
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success("Return processed successfully!");
+        setShowReturnModal(false);
+        fetchSales();
+      } else {
+        toast.error(data.error || "Failed to process return");
+      }
+    } catch (err) {
+      toast.error("Server error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // ✅ Export as CSV
   const handleExportCSV = () => {
     if (!filteredSales.length) return toast.error("No data to export.");
@@ -124,6 +238,8 @@ function ManageSales() {
       "Quantity",
       "Total Price",
       "Total BV",
+      "Status",
+      "Balance",
       "Date",
     ];
     const rows = filteredSales.map((s) => [
@@ -132,11 +248,13 @@ function ManageSales() {
       s.quantity,
       s.totalPrice,
       s.bv,
+      s.paymentStatus || 'Paid',
+      s.balance || 0,
       new Date(s.createdAt).toLocaleString(),
     ]);
 
     rows.push([]);
-    rows.push(["", "", "TOTALS:", totalP, totalBV, ""]);
+    rows.push(["", "", "TOTALS:", totalP, totalBV, "", "", ""]);
 
     const csvContent = [headers, ...rows].map((e) => e.join(",")).join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -165,13 +283,22 @@ function ManageSales() {
             View and filter transaction history.
           </p>
         </div>
-        <button
-          onClick={handleExportCSV}
-          className="w-full md:w-auto flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-xl font-medium shadow-lg shadow-green-900/10 transition-all active:scale-95 text-sm"
-        >
-          <Download size={18} />
-          Export Report
-        </button>
+        <div className="w-full md:w-auto flex items-center justify-end gap-3">
+          <button
+            onClick={() => setShowDebtModal(true)}
+            className="flex items-center gap-2 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white px-4 py-2.5 rounded-xl font-medium shadow-md shadow-orange-500/20 transition-all active:scale-95 text-sm"
+          >
+            <Wallet size={18} />
+            Settle Debt
+          </button>
+          <button
+            onClick={handleExportCSV}
+            className="flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-xl font-medium shadow-lg shadow-green-900/10 transition-all active:scale-95 text-sm"
+          >
+            <Download size={18} />
+            Export Report
+          </button>
+        </div>
       </div>
 
       {/* Filters Toolbar - Stacked on Mobile, Row on Desktop */}
@@ -278,9 +405,15 @@ function ManageSales() {
                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
                   BV (Total)
                 </th>
+                <th className="px-6 py-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
                   Date
                 </th>
+                {/* <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Action
+                </th> */}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 bg-white">
@@ -330,6 +463,23 @@ function ManageSales() {
                         {s.totalBV}
                       </span>
                     </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <div className="flex flex-col items-center gap-1">
+                        <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                          s.paymentStatus === 'Paid' ? 'bg-green-100 text-green-700' :
+                          s.paymentStatus === 'Not Paid' ? 'bg-red-100 text-red-700' :
+                          s.paymentStatus === 'Returned' ? 'bg-gray-100 text-gray-700' :
+                          'bg-orange-100 text-orange-700'
+                        }`}>
+                          {s.paymentStatus || 'Paid'}
+                        </span>
+                        {s.paymentStatus !== 'Paid' && s.balance > 0 && (
+                          <span className="text-xs font-medium text-red-600">
+                            Bal: {s.balance.toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex flex-col">
                         <span className="text-sm text-gray-600">
@@ -343,6 +493,24 @@ function ManageSales() {
                         </span>
                       </div>
                     </td>
+                    {/* <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                      {(s.quantity - (s.returnedQuantity || 0)) > 0 && (
+                        <button
+                          onClick={() => {
+                            setReturnDetails({
+                              saleId: s._id,
+                              product: s.product,
+                              maxQty: s.quantity - (s.returnedQuantity || 0),
+                              returnQty: ""
+                            });
+                            setShowReturnModal(true);
+                          }}
+                          className="px-3 py-1.5 text-orange-600 bg-orange-50 hover:bg-orange-100 rounded-lg flex items-center justify-center gap-1 transition-colors ml-auto font-medium"
+                        >
+                          <RotateCcw size={14} /> Return
+                        </button>
+                      )}
+                    </td> */}
                   </tr>
                 ))
               )}
@@ -382,9 +550,19 @@ function ManageSales() {
                     </p>
                   </div>
                 </div>
-                <span className="text-sm font-bold text-gray-900">
-                  {s.totalPrice?.toLocaleString()} KES
-                </span>
+                <div className="flex flex-col items-end gap-1">
+                  <span className="text-sm font-bold text-gray-900">
+                    {s.totalPrice?.toLocaleString()} KES
+                  </span>
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                    s.paymentStatus === 'Paid' ? 'bg-green-100 text-green-700' :
+                    s.paymentStatus === 'Not Paid' ? 'bg-red-100 text-red-700' :
+                    s.paymentStatus === 'Returned' ? 'bg-gray-100 text-gray-700' :
+                    'bg-orange-100 text-orange-700'
+                  }`}>
+                    {s.paymentStatus || 'Paid'}
+                  </span>
+                </div>
               </div>
 
               <div className="border-t border-gray-100 pt-3 flex flex-col gap-2">
@@ -401,7 +579,7 @@ function ManageSales() {
                     <layers size={14} /> Quantity
                   </span>
                   <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-xs font-medium">
-                    {s.quantity}
+                    {s.quantity} {s.returnedQuantity > 0 ? `(-${s.returnedQuantity})` : ''}
                   </span>
                 </div>
                 <div className="flex justify-between items-center text-sm">
@@ -410,6 +588,24 @@ function ManageSales() {
                   </span>
                   <span className="text-green-600 font-bold">{s.totalBV}</span>
                 </div>
+                {(s.quantity - (s.returnedQuantity || 0)) > 0 && (
+                  <div className="mt-2 text-right">
+                    <button
+                      onClick={() => {
+                        setReturnDetails({
+                          saleId: s._id,
+                          product: s.product,
+                          maxQty: s.quantity - (s.returnedQuantity || 0),
+                          returnQty: ""
+                        });
+                        setShowReturnModal(true);
+                      }}
+                      className="px-3 py-1.5 text-xs text-orange-600 bg-orange-50 hover:bg-orange-100 rounded-lg inline-flex items-center gap-1 font-medium"
+                    >
+                      <RotateCcw size={12} /> Return Product
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))
@@ -485,6 +681,202 @@ function ManageSales() {
           </p>
         </div>
       </div>
+
+      {/* Settle Debt Modal */}
+      {showDebtModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden transform scale-100 transition-all">
+            <div className="bg-gray-50 px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+              <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                <Wallet size={18} className="text-orange-500" />
+                Settle Debt
+              </h2>
+              <button onClick={() => setShowDebtModal(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto custom-scrollbar">
+              <div className="space-y-1.5 sticky top-0 bg-white pb-4 z-10 border-b border-gray-100">
+                <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">Select Distributor</label>
+                <select
+                  value={selectedDistributor}
+                  onChange={(e) => setSelectedDistributor(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none text-sm transition-all"
+                >
+                  <option value="">Choose a distributor...</option>
+                  {distributors.map(d => (
+                    <option key={d._id} value={d._id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+              
+              {selectedDistributor && (
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-gray-800">Unpaid Products</h3>
+                  {unpaidSales.length === 0 ? (
+                    <p className="text-sm text-gray-500 bg-gray-50 p-4 rounded-xl text-center border border-dashed border-gray-200">No outstanding debts found for this distributor.</p>
+                  ) : (
+                    unpaidSales.map(sale => {
+                      const maxReturnable = sale.quantity;
+                      return (
+                      <div key={sale._id} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm space-y-3 relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-1 h-full bg-orange-500"></div>
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-bold text-gray-900 text-sm">{sale.product}</p>
+                            <p className="text-xs text-gray-500">{new Date(sale.createdAt).toLocaleDateString()}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-bold text-red-600">Bal: {sale.balance.toLocaleString()} KES</p>
+                            <p className="text-xs font-medium text-gray-500">Total: {sale.totalPrice?.toLocaleString()} KES</p>
+                            <p className="text-xs text-gray-500">Qty: {sale.quantity}</p>
+                          </div>
+                        </div>
+                        
+                        <div className="pt-3 border-t border-gray-100 grid grid-cols-1 gap-3">
+                          {/* Payment Section */}
+                          <div className="flex gap-2">
+                            <div className="relative flex-1">
+                              <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                              <input
+                                type="number"
+                                placeholder="Pay Amount"
+                                value={payAmounts[sale._id] || ""}
+                                onChange={(e) => setPayAmounts({...payAmounts, [sale._id]: e.target.value})}
+                                className="w-full pl-8 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none text-xs transition-all"
+                              />
+                            </div>
+                            <button
+                              onClick={() => handlePaySpecificDebt(sale._id)}
+                              disabled={loading || !payAmounts[sale._id]}
+                              className="px-3 py-2 bg-orange-50 text-orange-600 hover:bg-orange-100 font-semibold rounded-lg text-xs transition-colors disabled:opacity-50 border border-orange-200"
+                            >
+                              Pay
+                            </button>
+                          </div>
+                          
+                          {/* Return Section */}
+                          {maxReturnable > 0 && (
+                            <div className="flex gap-2">
+                              <div className="relative flex-1">
+                                <RotateCcw className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                                <input
+                                  type="number"
+                                  placeholder={`Return Qty (Max ${maxReturnable})`}
+                                  max={maxReturnable}
+                                  value={returnAmounts[sale._id] || ""}
+                                  onChange={(e) => setReturnAmounts({...returnAmounts, [sale._id]: e.target.value})}
+                                  className="w-full pl-8 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-gray-500/20 focus:border-gray-500 outline-none text-xs transition-all"
+                                />
+                              </div>
+                              <button
+                                onClick={() => handleReturnSpecificProduct(sale._id, maxReturnable)}
+                                disabled={loading || !returnAmounts[sale._id]}
+                                className="px-3 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 font-semibold rounded-lg text-xs transition-colors disabled:opacity-50 border border-gray-200"
+                              >
+                                Return
+                              </button>
+                            </div>
+                          )}
+                          
+                          {/* Payment History Toggle */}
+                          <div className="pt-2 border-t border-gray-50">
+                            <button 
+                              onClick={() => setExpandedHistory(prev => ({...prev, [sale._id]: !prev[sale._id]}))}
+                              className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 transition-colors"
+                            >
+                              {expandedHistory[sale._id] ? 'Hide Payment History' : 'View Payment History'}
+                            </button>
+                            
+                            {expandedHistory[sale._id] && sale.payments?.length > 0 && (
+                              <div className="mt-2 space-y-1 bg-gray-50 p-2.5 rounded-lg border border-gray-200">
+                                {sale.payments.map((pay, i) => (
+                                  <div key={i} className="flex justify-between items-center text-[10px] text-gray-600">
+                                    <span>
+                                      {new Date(pay.date).toLocaleDateString()} {new Date(pay.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                    <span className="font-bold text-gray-800">+{pay.amount.toLocaleString()} KES</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {expandedHistory[sale._id] && (!sale.payments || sale.payments.length === 0) && (
+                              <p className="mt-2 text-[10px] text-gray-400 italic">No payments recorded yet.</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )})
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="bg-gray-50 px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+              <button 
+                onClick={() => {
+                  setShowDebtModal(false);
+                  setSelectedDistributor("");
+                  setPayAmounts({});
+                  setReturnAmounts({});
+                }} 
+                className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 rounded-xl transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Return Product Modal */}
+      {showReturnModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden transform scale-100 transition-all">
+            <div className="bg-gray-50 px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+              <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                <RotateCcw size={18} className="text-orange-500" />
+                Return Product
+              </h2>
+              <button onClick={() => setShowReturnModal(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="bg-orange-50 text-orange-800 p-3 rounded-xl text-sm border border-orange-100">
+                You are about to process a return for <strong>{returnDetails.product}</strong>.
+                <br/>Max returnable quantity: <strong>{returnDetails.maxQty}</strong>
+              </div>
+              <div className="space-y-1.5 mt-2">
+                <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">Return Quantity</label>
+                <div className="relative">
+                  <Package className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                  <input
+                    type="number"
+                    max={returnDetails.maxQty}
+                    placeholder="Enter quantity to return"
+                    value={returnDetails.returnQty}
+                    onChange={(e) => setReturnDetails({ ...returnDetails, returnQty: e.target.value })}
+                    className="w-full pl-9 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none text-sm transition-all"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="bg-gray-50 px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+              <button onClick={() => setShowReturnModal(false)} className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 rounded-xl transition-colors">
+                Cancel
+              </button>
+              <button 
+                onClick={handleReturnProduct} 
+                disabled={loading || !returnDetails.returnQty || returnDetails.returnQty > returnDetails.maxQty || returnDetails.returnQty <= 0} 
+                className="px-5 py-2 bg-orange-500 text-white text-sm font-bold rounded-xl hover:bg-orange-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-orange-500/20"
+              >
+                {loading ? <Loader2 size={16} className="animate-spin" /> : <RotateCcw size={16} />}
+                Process Return
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

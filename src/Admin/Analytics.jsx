@@ -93,12 +93,20 @@ const Analytics = () => {
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
-          title="Total Revenue"
-          value={`KSh ${data.totalRevenue.toLocaleString()}`}
-          subtitle={`${data.totalSales} total orders`}
+          title="Actual Revenue"
+          value={`KSh ${data.actualRevenue.toLocaleString()}`}
+          subtitle={`Total Expected: KSh ${data.totalRevenue.toLocaleString()}`}
           icon={<DollarSign size={24} />}
           bgClass="bg-emerald-50"
           textClass="text-emerald-600"
+        />
+        <StatCard
+          title="Pending Debt"
+          value={`KSh ${data.pendingDebt.toLocaleString()}`}
+          subtitle="Awaiting payment"
+          icon={<AlertCircle size={24} />}
+          bgClass="bg-red-50"
+          textClass="text-red-600"
         />
         <StatCard
           title="Total BV"
@@ -262,13 +270,22 @@ const Analytics = () => {
                   className="relative pl-4 border-l-2 border-blue-100 pb-1 last:pb-0 last:border-transparent group"
                 >
                   <div className="absolute -left-[5px] top-1 w-2 h-2 rounded-full bg-blue-400 ring-4 ring-white group-hover:bg-blue-600 transition-colors"></div>
-                  <p className="text-xs text-gray-500 mb-1 font-medium">
-                    {new Date(sale.createdAt).toLocaleDateString()} at{" "}
-                    {new Date(sale.createdAt).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </p>
+                    <div className="flex justify-between items-center mb-1">
+                      <p className="text-xs text-gray-500 font-medium">
+                        {new Date(sale.createdAt).toLocaleDateString()} at{" "}
+                        {new Date(sale.createdAt).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </p>
+                      <span className={`inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
+                        sale.paymentStatus === 'Paid' ? 'bg-green-100 text-green-700' :
+                        sale.paymentStatus === 'Not Paid' ? 'bg-red-100 text-red-700' :
+                        'bg-orange-100 text-orange-700'
+                      }`}>
+                        {sale.paymentStatus || 'Paid'}
+                      </span>
+                    </div>
                   <div className="bg-gray-50 border border-gray-100 p-3 rounded-xl hover:bg-white hover:border-blue-100 hover:shadow-sm transition-all duration-200 cursor-default">
                     <p className="text-sm font-semibold text-gray-900">
                       {sale.quantity}x {sale.product}
@@ -280,9 +297,16 @@ const Analytics = () => {
                           {sale.distributor?.name || "Unknown"}
                         </span>
                       </p>
-                      <p className="text-xs font-bold text-emerald-600">
-                        +KSh {sale.totalPrice?.toLocaleString()}
-                      </p>
+                      <div className="flex flex-col items-end">
+                        <p className={`text-xs font-bold ${sale.paymentStatus === 'Paid' ? 'text-emerald-600' : 'text-gray-900'}`}>
+                          KSh {sale.totalPrice?.toLocaleString()}
+                        </p>
+                        {sale.paymentStatus !== 'Paid' && sale.balance > 0 && (
+                          <p className="text-[10px] font-bold text-red-500">
+                            Bal: {sale.balance.toLocaleString()}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

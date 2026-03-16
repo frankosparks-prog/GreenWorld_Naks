@@ -5,7 +5,7 @@ import {
   ShoppingBag,
   User,
   PlusCircle,
-  // Trash2,
+  Trash2,
   Calculator,
   Loader2,
   Search,
@@ -17,8 +17,13 @@ import {
   ChevronRight,
   Calendar,
   CreditCard,
-  Download,
   Filter,
+  ShoppingCart,
+  Wallet,
+  X,
+  RotateCcw,
+  DollarSign,
+  Download
 } from "lucide-react";
 import { saveAs } from "file-saver";
 
@@ -37,6 +42,27 @@ const Sales = () => {
     product: "",
     quantity: "",
   });
+  
+  const [cart, setCart] = useState([]);
+  const [isDebtSale, setIsDebtSale] = useState(false);
+  
+  // Debt Payment & Return State
+  const [showDebtModal, setShowDebtModal] = useState(false);
+  const [selectedDistributor, setSelectedDistributor] = useState("");
+  const [unpaidSales, setUnpaidSales] = useState([]);
+  const [payAmounts, setPayAmounts] = useState({});
+  const [returnAmounts, setReturnAmounts] = useState({});
+  const [expandedHistory, setExpandedHistory] = useState({});
+
+  useEffect(() => {
+    if (selectedDistributor) {
+      axios.get(`${SERVER_URL}/api/sales/distributor/${selectedDistributor}/debt`)
+        .then(res => setUnpaidSales(res.data))
+        .catch(err => toast.error("Failed to load unpaid sales"));
+    } else {
+      setUnpaidSales([]);
+    }
+  }, [selectedDistributor]);
 
   // Filter States
   const [filterType, setFilterType] = useState("all");
@@ -151,8 +177,8 @@ const Sales = () => {
     [filteredSales],
   );
 
-  // ✅ Handle Add Sale
-  const handleAddSale = async () => {
+  // ✅ Handle Add to Cart
+  const handleAddToCart = () => {
     if (!newSale.distributorId || !newSale.product || !newSale.quantity) {
       return toast.error("⚠️ Please fill all fields!");
     }
@@ -163,7 +189,10 @@ const Sales = () => {
     const selectedProduct = stock.find((p) => p.name === newSale.product);
     if (!selectedProduct) return toast.error("Product not found in stock.");
 
-    if (qty > selectedProduct.quantity)
+    const existingInCart = cart.find(item => item.product === newSale.product);
+    const totalQtyRequested = (existingInCart ? existingInCart.quantity : 0) + qty;
+
+    if (totalQtyRequested > selectedProduct.quantity)
       return toast.error(`❌ Only ${selectedProduct.quantity} left in stock.`);
 
     const distributor = distributors.find(
@@ -172,7 +201,6 @@ const Sales = () => {
     if (!distributor) return toast.error("Distributor not found.");
 
     const isNonMember = distributor.name === "Non-Member";
-    // 🛡️ Safety check: default to 0 if price is missing
     const price =
       (isNonMember
         ? selectedProduct.retailPrice
@@ -182,80 +210,131 @@ const Sales = () => {
     const bv = selectedProduct.bv || 0;
     const totalBV = bv * qty;
 
-    const payload = {
-      distributorId: newSale.distributorId,
+    const newItem = {
       product: newSale.product,
       quantity: qty,
       bv,
       totalBV,
       price,
       totalPrice,
+      isDebt: isDebtSale,
     };
+
+    if (existingInCart) {
+      setCart(cart.map(item => 
+        item.product === newSale.product 
+          ? { ...item, quantity: item.quantity + qty, totalBV: item.totalBV + totalBV, totalPrice: item.totalPrice + totalPrice } 
+          : item
+      ));
+    } else {
+      setCart([...cart, newItem]);
+    }
+    
+    setNewSale({ ...newSale, product: "", quantity: "" });
+    toast.success("Added to cart!");
+  };
+
+  const handleRemoveFromCart = (index) => {
+    setCart(cart.filter((_, i) => i !== index));
+  };
+
+  // ✅ Handle Checkout
+  const handleCheckout = async () => {
+    if (cart.length === 0) return toast.error("Cart is empty.");
+    if (!newSale.distributorId) return toast.error("Distributor not selected.");
 
     setLoading(true);
     try {
-      await axios.post(`${SERVER_URL}/api/sales`, payload);
-      await axios.patch(`${SERVER_URL}/api/stock/decrement`, {
-        name: newSale.product,
-        quantity: qty,
+      await axios.post(`${SERVER_URL}/api/sales/cart`, {
+        distributorId: newSale.distributorId,
+        cartItems: cart,
+        isDebt: isDebtSale
       });
 
-      toast.success("✅ Sale recorded successfully!");
+      toast.success("✅ Checkout successful!");
+      setCart([]);
+      setIsDebtSale(false);
+      setNewSale({ distributorId: "", product: "", quantity: "" });
       fetchSales();
       fetchStock();
-
-      const updatedStock = selectedProduct.quantity - qty;
-      if (updatedStock <= 0)
-        toast.error(`${newSale.product} is now out of stock!`);
-      else if (updatedStock <= 5)
-        toast(`Low stock: only ${updatedStock} left.`, {
-          icon: "⚠️",
-          style: { background: "#fff3cd", color: "#856404" },
-        });
-
-      setNewSale({ distributorId: "", product: "", quantity: "" });
     } catch (err) {
-      console.error("Sale Error:", err);
-      toast.error("❌ Failed to record sale.");
+      console.error("Checkout Error:", err);
+      toast.error(err.response?.data?.error || "❌ Failed to checkout.");
     } finally {
       setLoading(false);
     }
   };
 
-  // const handleDelete = async (id) => {
-  //   if (window.confirm("Delete this sale?")) {
-  //     try {
-  //       await axios.delete(`${SERVER_URL}/api/sales/${id}`);
-  //       toast.success("Sale deleted!");
-  //       fetchSales();
-  //     } catch {
-  //       toast.error("Failed to delete sale");
-  //     }
-  //   }
-  // };
+  // ✅ Handle Specific Debt Payment
+  const handlePaySpecificDebt = async (saleId) => {
+    const amount = payAmounts[saleId];
+    if (!amount || amount <= 0) return toast.error("Enter valid amount");
+    try {
+      setLoading(true);
+      const res = await axios.post(`${SERVER_URL}/api/sales/pay-debt`, {
+        saleId, amount
+      });
+      toast.success("Payment recorded!");
+      setPayAmounts(prev => ({...prev, [saleId]: ""}));
+      fetchSales();
+      axios.get(`${SERVER_URL}/api/sales/distributor/${selectedDistributor}/debt`)
+        .then(res => setUnpaidSales(res.data));
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Failed to settle debt");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ✅ Handle Specific Return Product
+  const handleReturnSpecificProduct = async (saleId, maxQty) => {
+    const returnQty = returnAmounts[saleId];
+    if (!returnQty || returnQty <= 0) return toast.error("Enter valid return quantity");
+    if (returnQty > maxQty) return toast.error("Exceeds max returnable quantity");
+    try {
+      setLoading(true);
+      const res = await axios.post(`${SERVER_URL}/api/sales/return`, {
+        saleId, returnQuantity: returnQty
+      });
+      toast.success("Return processed successfully!");
+      setReturnAmounts(prev => ({...prev, [saleId]: ""}));
+      fetchSales();
+      fetchStock();
+      axios.get(`${SERVER_URL}/api/sales/distributor/${selectedDistributor}/debt`)
+        .then(res => setUnpaidSales(res.data));
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Failed to process return");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleExportCSV = () => {
     if (!filteredSales.length) return toast.error("No data to export.");
 
     const headers = [
+      "Date",
       "Distributor",
       "Product",
       "Quantity",
       "Total Price",
       "Total BV",
-      "Date",
+      "Status",
+      "Balance"
     ];
     const rows = filteredSales.map((s) => [
+      new Date(s.createdAt).toLocaleString(),
       s.distributor?.name || "N/A",
       s.product,
       s.quantity,
       s.totalPrice || 0,
       s.totalBV || 0,
-      new Date(s.createdAt).toLocaleString(),
+      s.paymentStatus || "Paid",
+      s.balance || 0
     ]);
 
     rows.push([]);
-    rows.push(["", "", "TOTALS:", totalRevenue, totalBVSum, ""]);
+    rows.push(["TOTALS:", "", "", "", totalRevenue, totalBVSum, "", ""]);
 
     const csvContent = [headers, ...rows].map((e) => e.join(",")).join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -263,35 +342,13 @@ const Sales = () => {
     toast.success("Report downloaded!");
   };
 
-  // ✅ Safe Calculation Helper
-  const calculateTotals = () => {
-    if (!newSale.product || !newSale.quantity) return null;
-
-    const qty = parseInt(newSale.quantity, 10);
-    if (isNaN(qty) || qty <= 0) return null;
-
-    const selectedProduct = stock.find((p) => p.name === newSale.product);
-    if (!selectedProduct) return null;
-
-    const distributor = distributors.find(
-      (d) => d._id === newSale.distributorId,
-    );
-
-    // 🛡️ Default values to prevent undefined errors
-    const isNonMember = distributor?.name === "Non-Member";
-    const price =
-      (isNonMember
-        ? selectedProduct.retailPrice
-        : selectedProduct.distributorPrice) || 0;
-
-    return {
-      totalPrice: price * qty,
-      totalBV: (selectedProduct.bv || 0) * qty,
-      pricePerUnit: price,
-    };
+  const calculateCartTotals = () => {
+    return cart.reduce((sums, item) => ({
+      totalBV: sums.totalBV + item.totalBV,
+      totalPrice: sums.totalPrice + item.totalPrice
+    }), { totalBV: 0, totalPrice: 0 });
   };
-
-  const currentTotals = calculateTotals();
+  const cartTotals = calculateCartTotals();
 
   return (
     <div className="min-h-screen bg-gray-50/50 pt-24 pb-12 px-4 sm:px-6 lg:px-8">
@@ -308,16 +365,21 @@ const Sales = () => {
             </p>
           </div>
 
-          <div className="flex gap-3">
-            <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-gray-200 shadow-sm">
+          <div className="flex flex-wrap gap-3 mt-4 md:mt-0">
+            <button
+              onClick={() => setShowDebtModal(true)}
+              className="flex items-center gap-2 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white px-4 py-2 rounded-xl font-medium shadow-sm transition-all shadow-md shadow-orange-500/20"
+            >
+              <Wallet size={18} /> Settle Debt
+            </button>
+            <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-gray-200 shadow-sm hidden sm:flex">
               <div className="bg-emerald-100 p-2 rounded-lg">
                 <Calculator size={20} className="text-emerald-700" />
               </div>
               <div>
                 <p className="text-xs text-gray-500 font-medium">
-                  Total BV Awarded
+                  Total BV
                 </p>
-                {/* ✅ Uses optional chaining for safety */}
                 <p className="text-lg font-bold text-gray-900 leading-none">
                   {totalBVSum?.toLocaleString() || "0"}
                 </p>
@@ -325,7 +387,7 @@ const Sales = () => {
             </div>
             <button
               onClick={handleExportCSV}
-              className="flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-md shadow-emerald-500/20 text-white px-4 py-2 rounded-xl font-medium shadow-sm transition-all"
+              className="flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-md shadow-emerald-500/20 text-white px-4 py-2 rounded-xl font-medium shadow-sm transition-all"
             >
               <Download size={18} /> Export
             </button>
@@ -436,13 +498,14 @@ const Sales = () => {
                       />
                       <select
                         value={newSale.distributorId}
+                        disabled={cart.length > 0}
                         onChange={(e) =>
                           setNewSale({
                             ...newSale,
                             distributorId: e.target.value,
                           })
                         }
-                        className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-sm outline-none appearance-none"
+                        className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-sm outline-none appearance-none disabled:bg-gray-100"
                       >
                         <option value="">Select Distributor...</option>
                         {distributors.map((d) => (
@@ -511,55 +574,102 @@ const Sales = () => {
 
                   <div className="flex items-end">
                     <button
-                      onClick={handleAddSale}
-                      disabled={loading}
-                      className="w-full h-[46px] bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl shadow-lg hover:shadow-emerald-500/30 transition-all active:scale-95 transform hover:-translate-y-0.5 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                      onClick={handleAddToCart}
+                      className="w-full h-[46px] bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold rounded-xl shadow-sm transition-all active:scale-95 transform hover:-translate-y-0.5 flex items-center justify-center gap-2"
                     >
-                      {loading ? (
-                        <Loader2 className="animate-spin" size={18} />
-                      ) : (
-                        <CircleDollarSign size={18} />
-                      )}
-                      {loading ? "Processing..." : "Process Sale"}
+                      <PlusCircle size={18} />
+                      Add to Cart
                     </button>
                   </div>
                 </div>
 
-                {/* Live Estimates Panel - Added Safety Checks */}
-                {currentTotals && (
-                  <div className="mt-6 bg-emerald-50/50 border border-emerald-100 rounded-xl p-4 flex flex-col sm:flex-row gap-4 sm:gap-8 items-start sm:items-center">
-                    <div className="flex items-center gap-3">
-                      <div className="bg-white p-2 rounded-lg border border-green-100 shadow-sm">
-                        <Calculator className="text-emerald-600" size={20} />
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">
-                          Total BV
-                        </p>
-                        <p className="text-lg font-bold text-emerald-700">
-                          {currentTotals.totalBV}
-                        </p>
-                      </div>
+                {/* Cart View */}
+                {cart.length > 0 && (
+                  <div className="mt-6 bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                    <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex justify-between items-center">
+                      <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                        <ShoppingCart size={18} className="text-emerald-600" />
+                        Current Cart
+                      </h3>
+                      <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-full">{cart.length} items</span>
                     </div>
-                    <div className="hidden sm:block w-px h-10 bg-green-200"></div>
-                    <div className="flex items-center gap-3">
-                      <div className="bg-white p-2 rounded-lg border border-green-100 shadow-sm">
-                        <CreditCard className="text-emerald-600" size={20} />
+                    <div className="p-0 overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-100">
+                        <thead className="bg-gray-50/50">
+                          <tr>
+                            <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Product</th>
+                            <th className="px-4 py-2 text-center text-xs font-semibold text-gray-500 uppercase">Qty</th>
+                            <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase">Price</th>
+                            <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase">BV</th>
+                            <th className="px-4 py-2 text-center text-xs font-semibold text-gray-500 uppercase">Debt?</th>
+                            <th className="px-4 py-2 text-center text-xs font-semibold text-gray-500 uppercase">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {cart.map((item, idx) => (
+                            <tr key={idx} className="hover:bg-gray-50">
+                              <td className="px-4 py-2 text-sm text-gray-800 font-medium whitespace-nowrap">{item.product}</td>
+                              <td className="px-4 py-2 text-sm text-gray-600 text-center">{item.quantity}</td>
+                              <td className="px-4 py-2 text-sm text-emerald-600 font-semibold text-right whitespace-nowrap">{item.totalPrice.toLocaleString()} KES</td>
+                              <td className="px-4 py-2 text-sm text-gray-600 text-right">{item.totalBV}</td>
+                              <td className="px-4 py-2 text-center">
+                                <input 
+                                  type="checkbox" 
+                                  checked={item.isDebt || false} 
+                                  onChange={(e) => {
+                                    const newCart = [...cart];
+                                    newCart[idx].isDebt = e.target.checked;
+                                    setCart(newCart);
+                                  }}
+                                  className="w-4 h-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500 cursor-pointer"
+                                />
+                              </td>
+                              <td className="px-4 py-2 text-center">
+                                <button onClick={() => handleRemoveFromCart(idx)} className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors">
+                                  <Trash2 size={16} />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="bg-gray-50 p-4 border-t border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+                      <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+                        <div>
+                          <p className="text-xs text-gray-500 uppercase font-semibold">Total Price</p>
+                          <p className="text-lg font-bold text-gray-900">{cartTotals.totalPrice.toLocaleString()} KES</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 uppercase font-semibold">Total BV</p>
+                          <p className="text-lg font-bold text-gray-900">{cartTotals.totalBV}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">
-                          Total Price
-                        </p>
-                        {/* ✅ Optional Chaining Safety */}
-                        <p className="text-lg font-bold text-emerald-700">
-                          {currentTotals.totalPrice?.toLocaleString() || "0"}{" "}
-                          KES
-                        </p>
-                        <p className="text-[10px] text-gray-400">
-                          @{" "}
-                          {currentTotals.pricePerUnit?.toLocaleString() || "0"}{" "}
-                          / unit
-                        </p>
+                      
+                      <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                        <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg border border-gray-200">
+                          <input 
+                            type="checkbox" 
+                            id="debtToggle" 
+                            checked={isDebtSale} 
+                            onChange={(e) => {
+                              setIsDebtSale(e.target.checked);
+                              setCart(cart.map(item => ({ ...item, isDebt: e.target.checked })));
+                            }}
+                            className="w-4 h-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500"
+                          />
+                          <label htmlFor="debtToggle" className="text-sm font-medium text-gray-700 cursor-pointer">
+                            Mark All as Debt
+                          </label>
+                        </div>
+                        <button
+                          onClick={handleCheckout}
+                          disabled={loading}
+                          className="flex-1 sm:flex-none h-[42px] px-6 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl shadow-md hover:shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                        >
+                          {loading ? <Loader2 size={18} className="animate-spin" /> : <CircleDollarSign size={18} />}
+                          Checkout
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -622,9 +732,9 @@ const Sales = () => {
                           <th className="py-3 px-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
                             BV
                           </th>
-                          {/* <th className="py-3 px-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                            Action
-                          </th> */}
+                          <th className="py-3 px-4 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                            Status
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50">
@@ -672,14 +782,23 @@ const Sales = () => {
                             <td className="py-3 px-4 text-right text-sm font-medium text-gray-800">
                               {sale.totalBV}
                             </td>
-                            {/* <td className="py-3 px-4 text-right">
-                              <button
-                                onClick={() => handleDelete(sale._id)}
-                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </td> */}
+                            <td className="py-3 px-4 text-center">
+                              <div className="flex flex-col items-center gap-1">
+                                <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                  sale.paymentStatus === 'Paid' ? 'bg-green-100 text-green-700' :
+                                  sale.paymentStatus === 'Not Paid' ? 'bg-red-100 text-red-700' :
+                                  sale.paymentStatus === 'Returned' ? 'bg-gray-100 text-gray-700' :
+                                  'bg-orange-100 text-orange-700'
+                                }`}>
+                                  {sale.paymentStatus || 'Paid'}
+                                </span>
+                                {sale.paymentStatus !== 'Paid' && sale.balance > 0 && (
+                                  <span className="text-xs font-medium text-red-600 whitespace-nowrap">
+                                    Bal: {sale.balance.toLocaleString()}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -764,6 +883,152 @@ const Sales = () => {
           </div>
         </div>
       </div>
+      
+      {/* Settle Debt Modal */}
+      {showDebtModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden transform scale-100 transition-all">
+            <div className="bg-gray-50 px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+              <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                <Wallet size={18} className="text-orange-500" />
+                Settle Debt
+              </h2>
+              <button onClick={() => setShowDebtModal(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto custom-scrollbar">
+              <div className="space-y-1.5 sticky top-0 bg-white pb-4 z-10 border-b border-gray-100">
+                <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">Select Distributor</label>
+                <select
+                  value={selectedDistributor}
+                  onChange={(e) => setSelectedDistributor(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none text-sm transition-all"
+                >
+                  <option value="">Choose a distributor...</option>
+                  {distributors.map(d => (
+                    <option key={d._id} value={d._id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedDistributor && (
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-gray-800">Unpaid Products</h3>
+                  {unpaidSales.length === 0 ? (
+                    <p className="text-sm text-gray-500 bg-gray-50 p-4 rounded-xl text-center border border-dashed border-gray-200">No outstanding debts found for this distributor.</p>
+                  ) : (
+                    unpaidSales.map(sale => {
+                      const maxReturnable = sale.quantity;
+                      return (
+                      <div key={sale._id} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm space-y-3 relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-1 h-full bg-orange-500"></div>
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-bold text-gray-900 text-sm">{sale.product}</p>
+                            <p className="text-xs text-gray-500">{new Date(sale.createdAt).toLocaleDateString()}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-bold text-red-600">Bal: {sale.balance.toLocaleString()} KES</p>
+                            <p className="text-xs font-medium text-gray-500">Total: {sale.totalPrice?.toLocaleString()} KES</p>
+                            <p className="text-xs text-gray-500">Qty: {sale.quantity}</p>
+                          </div>
+                        </div>
+
+                        <div className="pt-3 border-t border-gray-100 grid grid-cols-1 gap-3">
+                          {/* Payment Section */}
+                          <div className="flex gap-2">
+                            <div className="relative flex-1">
+                              <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                              <input
+                                type="number"
+                                placeholder="Pay Amount"
+                                value={payAmounts[sale._id] || ""}
+                                onChange={(e) => setPayAmounts({...payAmounts, [sale._id]: e.target.value})}
+                                className="w-full pl-8 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none text-xs transition-all"
+                              />
+                            </div>
+                            <button
+                              onClick={() => handlePaySpecificDebt(sale._id)}
+                              disabled={loading || !payAmounts[sale._id]}
+                              className="px-3 py-2 bg-orange-50 text-orange-600 hover:bg-orange-100 font-semibold rounded-lg text-xs transition-colors disabled:opacity-50 border border-orange-200"
+                            >
+                              Pay
+                            </button>
+                          </div>
+
+                          {/* Return Section */}
+                          {maxReturnable > 0 && (
+                            <div className="flex gap-2">
+                              <div className="relative flex-1">
+                                <RotateCcw className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                                <input
+                                  type="number"
+                                  placeholder={`Return Qty (Max ${maxReturnable})`}
+                                  max={maxReturnable}
+                                  value={returnAmounts[sale._id] || ""}
+                                  onChange={(e) => setReturnAmounts({...returnAmounts, [sale._id]: e.target.value})}
+                                  className="w-full pl-8 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-gray-500/20 focus:border-gray-500 outline-none text-xs transition-all"
+                                />
+                              </div>
+                              <button
+                                onClick={() => handleReturnSpecificProduct(sale._id, maxReturnable)}
+                                disabled={loading || !returnAmounts[sale._id]}
+                                className="px-3 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 font-semibold rounded-lg text-xs transition-colors disabled:opacity-50 border border-gray-200"
+                              >
+                                Return
+                              </button>
+                            </div>
+                          )}
+                          
+                          {/* Payment History Toggle */}
+                          <div className="pt-2 border-t border-gray-50">
+                            <button 
+                              onClick={() => setExpandedHistory(prev => ({...prev, [sale._id]: !prev[sale._id]}))}
+                              className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 transition-colors"
+                            >
+                              {expandedHistory[sale._id] ? 'Hide Payment History' : 'View Payment History'}
+                            </button>
+                            
+                            {expandedHistory[sale._id] && sale.payments?.length > 0 && (
+                              <div className="mt-2 space-y-1 bg-gray-50 p-2.5 rounded-lg border border-gray-200">
+                                {sale.payments.map((pay, i) => (
+                                  <div key={i} className="flex justify-between items-center text-[10px] text-gray-600">
+                                    <span>
+                                      {new Date(pay.date).toLocaleDateString()} {new Date(pay.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                    <span className="font-bold text-gray-800">+{pay.amount.toLocaleString()} KES</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {expandedHistory[sale._id] && (!sale.payments || sale.payments.length === 0) && (
+                              <p className="mt-2 text-[10px] text-gray-400 italic">No payments recorded yet.</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )})
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="bg-gray-50 px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+              <button 
+                onClick={() => {
+                  setShowDebtModal(false);
+                  setSelectedDistributor("");
+                  setPayAmounts({});
+                  setReturnAmounts({});
+                }} 
+                className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-300 bg-white hover:bg-gray-50 rounded-xl transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

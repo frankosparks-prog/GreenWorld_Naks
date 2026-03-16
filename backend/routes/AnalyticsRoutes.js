@@ -14,13 +14,15 @@ router.get('/summary', async (req, res) => {
         $group: {
           _id: null,
           totalRevenue: { $sum: "$totalPrice" },
+          actualRevenue: { $sum: "$paidAmount" },
+          pendingDebt: { $sum: "$balance" },
           totalBV: { $sum: "$totalBV" },
           totalQuantitySold: { $sum: "$quantity" }
         }
       }
     ]);
 
-    const revStats = salesAgg[0] || { totalRevenue: 0, totalBV: 0, totalQuantitySold: 0 };
+    const revStats = salesAgg[0] || { totalRevenue: 0, actualRevenue: 0, pendingDebt: 0, totalBV: 0, totalQuantitySold: 0 };
 
     // Stock Data
     const stockStats = await Stock.aggregate([
@@ -61,6 +63,8 @@ router.get('/summary', async (req, res) => {
     res.status(200).json({
       totalSales,
       totalRevenue: revStats.totalRevenue,
+      actualRevenue: revStats.actualRevenue,
+      pendingDebt: revStats.pendingDebt,
       totalBV: revStats.totalBV,
       totalQuantitySold: revStats.totalQuantitySold,
       totalStockItems: stockItems,

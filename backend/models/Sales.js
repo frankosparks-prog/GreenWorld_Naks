@@ -31,6 +31,38 @@ const saleSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    paymentStatus: {
+      type: String,
+      enum: ['Paid', 'Partially Paid', 'Not Paid', 'Returned'],
+      default: 'Paid'
+    },
+    paidAmount: {
+      type: Number,
+      default: function() {
+        return this.isDebt ? 0 : this.totalPrice;
+      }
+    },
+    balance: {
+      type: Number,
+      default: function() {
+        return this.isDebt ? this.totalPrice : 0;
+      }
+    },
+    isDebt: {
+      type: Boolean,
+      default: false
+    },
+    returnedQuantity: {
+      type: Number,
+      default: 0
+    },
+    transactionId: {
+      type: String
+    },
+    payments: [{
+      amount: Number,
+      date: { type: Date, default: Date.now }
+    }]
   },
   { timestamps: true }
 );
