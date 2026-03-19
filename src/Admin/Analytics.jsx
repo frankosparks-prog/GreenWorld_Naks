@@ -7,8 +7,6 @@ import {
   Activity,
   AlertCircle,
   Clock,
-  ArrowRight,
-  TrendingDown,
 } from "lucide-react";
 
 const SERVER_URL = process.env.REACT_APP_SERVER_URL;

@@ -9,7 +9,6 @@ import {
   LogOut,
   Settings, // Added Settings for profile/user-related settings
   BarChart,
-  User2, // Using a more relevant icon for a modern dashboard (instead of Shield)
 } from "lucide-react";
 import toast from "react-hot-toast";
 const Navbar = ({ setIsLoggedIn }) => {

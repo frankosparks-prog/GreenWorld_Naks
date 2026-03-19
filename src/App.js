@@ -20,8 +20,6 @@ import Profile from './pages/Profile';
 import ManageDistributors from './Admin/ManageDistributors';
 import ManageStock from './Admin/ManageStock';
 import ManageSales from './Admin/ManageSales';
-import Massage from './pages/Massage';
-import ManageMassage from './Admin/ManageMassage';
 import Registration from './pages/Registration';
 
 const App = () => {

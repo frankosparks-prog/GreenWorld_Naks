@@ -11,7 +11,6 @@ import {
   User,
   ShieldCheck,
   ChevronRight,
-  Users,
   TrendingUp,
 } from "lucide-react";
 import toast from "react-hot-toast";
