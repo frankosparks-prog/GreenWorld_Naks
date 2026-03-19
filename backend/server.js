@@ -28,7 +28,7 @@ const allowedOrigins = [
   "http://localhost:3000", // For development
   "http://localhost:3001", // For development
   "http://192.168.43.151:3000", // Local network testing
-  "https://greenhealthmwingi.co.ke" // Production
+  "https://greenworld-naks.onrender.com" // Production
 ];
 
 app.use(cors({
